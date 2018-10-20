@@ -4,9 +4,10 @@
   "main": "dist/plugin.js",
   "license": "MIT",
   "scripts": {
+    "prepublish": "npm run clean && npm run build",
     "build": "node_modules/.bin/babel *.js --out-dir dist --source-maps=inline",
     "watch": "node_modules/.bin/babel *.js --out-dir dist --source-maps=inline --watch",
-    "clean": "rm -rf dist"
+    "clean": "del /s/f/q dist"
   },
   "dependencies": {
     "fulcrum-desktop-plugin": "^1.4.0",
