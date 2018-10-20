@@ -49,14 +49,14 @@ export default class {
           desc: 'mssql connection string',
           type: 'string'
         },
-        setup: {
-          desc: 'setup the database',
-          type: 'boolean'
-        },
         org: {
           desc: 'organization name',
           required: true,
           type: 'string'
+        },
+        setup: {
+          desc: 'setup the database',
+          type: 'boolean'
         }
       },
       handler: this.runCommand
@@ -64,12 +64,11 @@ export default class {
   }
 
   runCommand = async () => {
+    await this.activate();
     if (fulcrum.args.setup) {
       await this.createDatabase(fulcrum.args.msDatabase || 'fulcrumapp');
       return;
     }
-
-    await this.activate();
 
     const account = await fulcrum.fetchAccount(fulcrum.args.org);
 
@@ -88,25 +87,36 @@ export default class {
     }
   }
 
+  get useSyncEvents() {
+    return fulcrum.args.msSyncEvents != null ? fulcrum.args.msSyncEvents : true;
+  }
+
   async activate() {
     const options = this.connectionOptions;
 
-    this.pool = await mssql.connect(options)
+    this.pool = await mssql.connect(options);
 
+    if (this.useSyncEvents) {
     // fulcrum.on('choice_list:save', this.onChoiceListSave);
     // fulcrum.on('classification_set:save', this.onClassificationSetSave);
     // fulcrum.on('project:save', this.onProjectSave);
-    fulcrum.on('form:save', this.onFormSave);
-    fulcrum.on('record:save', this.onRecordSave);
-    fulcrum.on('record:delete', this.onRecordDelete);
+      fulcrum.on('record:save', this.onRecordSave);
+      fulcrum.on('record:delete', this.onRecordDelete);
 
+      // fulcrum.on('choice_list:save', this.onChoiceListSave);
+      fulcrum.on('form:save', this.onFormSave);
+      fulcrum.on('form:delete', this.onFormSave);
+
+      // fulcrum.on('classification_set:save', this.onClassificationSetSave);
+      // fulcrum.on('project:save', this.onProjectSave);
+    }
+    this.dataSchema = fulcrum.args.msSchema || 'dbo';
     // Fetch all the existing tables on startup. This allows us to special case the
     // creation of new tables even when the form isn't version 1. If the table doesn't
     // exist, we can pretend the form is version 1 so it creates all new tables instead
     // of applying a schema diff.
     const rows = await this.run("SELECT table_name AS name FROM information_schema.tables WHERE table_schema='dbo'");
 
-    this.dataSchema = fulcrum.args.msSchema || 'dbo';
     this.tableNames = rows.map(o => o.name);
 
     // make a client so we can use it to build SQL statements
@@ -155,7 +165,7 @@ export default class {
     const statements = MSSQLRecordValues.deleteForRecordStatements(this.mssql, record, record.form);
 
     for (const statement of statements) {
-      await this.run(o.sql);
+      await this.run(statement.sql);
     }
   }
 
@@ -181,9 +191,12 @@ export default class {
 
     const statements = MSSQLRecordValues.updateForRecordStatements(this.mssql, record);
 
+//console.log('*********************** Start updateRecord ***********************');
     for (const statement of statements) {
+//console.log(statement);
       await this.run(statement.sql);
     }
+//console.log('************************ End updateRecord ************************');
   }
 
   rootTableExists = (form) => {
@@ -228,7 +241,7 @@ export default class {
   }
 
   async dropFriendlyView(form, repeatable) {
-    const viewName = repeatable ? `${form.name} - ${repeatable.dataName}` : form.name;
+    const viewName = this.getFriendlyTableName(form, repeatable);
 
     try {
       await this.run(format('DROP VIEW IF EXISTS %s.%s;', this.ident(this.dataSchema), this.ident(viewName)));
@@ -241,7 +254,7 @@ export default class {
   }
 
   async createFriendlyView(form, repeatable) {
-    const viewName = repeatable ? `${form.name} - ${repeatable.dataName}` : form.name;
+    const viewName = this.getFriendlyTableName(form, repeatable);
 
     try {
       await this.run(format('CREATE VIEW %s.%s AS SELECT * FROM %s_view_full;',
@@ -254,6 +267,12 @@ export default class {
       }
       // sometimes it doesn't exist
     }
+  }
+
+  getFriendlyTableName(form, repeatable) {
+    const name = repeatable ? `${form.name} - ${repeatable.dataName}` : form.name;
+
+    return name;
   }
 
   async rebuildForm(form, account, progress) {
@@ -288,6 +307,14 @@ export default class {
     };
   }
 
+  updateStatus = (message) => {
+    if (process.stdout.isTTY) {
+      process.stdout.clearLine();
+      process.stdout.cursorTo(0);
+      process.stdout.write(message);
+    }
+  }
+
   get connectionOptions() {
     if (fulcrum.args.msConnectionString) {
       return fulcrum.args.msConnectionString;
@@ -304,7 +331,7 @@ export default class {
         encrypt: true // Use this if you're on Windows Azure
       }
     };
-
+/*
     if (fulcrum.args.msUser) {
       options.user = fulcrum.args.msUser;
     }
@@ -312,7 +339,7 @@ export default class {
     if (fulcrum.args.msPassword) {
       options.password = fulcrum.args.msPassword;
     }
-
+*/
     return options;
   }
 
@@ -320,21 +347,9 @@ export default class {
     const options = this.connectionOptions;
 
     options.database = null;
-
     this.pool = await mssql.connect(options)
-
     const sql = `CREATE DATABASE ${databaseName}`;
-
     console.log(sql);
-
-    const rows = await this.run(`CREATE DATABASE ${databaseName}`);
-  }
-
-  updateStatus = (message) => {
-    if (process.stdout.isTTY) {
-      process.stdout.clearLine();
-      process.stdout.cursorTo(0);
-      process.stdout.write(message);
-    }
+    const rows = await this.run(sql);
   }
 }

@@ -1,20 +1,20 @@
 import Schema from 'fulcrum-schema/dist/schema';
 import sqldiff from 'sqldiff';
-import MSSQLSchema from './mssql-schema';
+import MSSchema from './mssql-schema';
 
 const {SchemaDiffer, MSSQL} = sqldiff;
 
-export default class PostgresSchema {
+export default class MSSQLSchema {
   static async generateSchemaStatements(account, oldForm, newForm) {
     let oldSchema = null;
     let newSchema = null;
 
     if (oldForm) {
-      oldSchema = new Schema(oldForm, MSSQLSchema, null);
+      oldSchema = new Schema(oldForm, MSSchema, null);
     }
 
     if (newForm) {
-      newSchema = new Schema(newForm, MSSQLSchema, null);
+      newSchema = new Schema(newForm, MSSchema, null);
     }
 
     const differ = new SchemaDiffer(oldSchema, newSchema);
